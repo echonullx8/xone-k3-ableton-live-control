@@ -1,4 +1,4 @@
-# Xone:K3 Ableton Live 12 Remote Script
+# Xone:K3 Ableton Live 12 Remote Script v2.0
 
 [中文说明](README.md)
 
@@ -6,10 +6,18 @@ An independently developed Ableton Live 12 MIDI Remote Script for the Allen & He
 
 > This guide was written from the actual `Xone_K3/xonek3.py`, `Xone_K3/elements.py`, `Xone_K3/midi.py`, and `Xone K3 Ableton.xml` files in this repository.
 
+## v2.0 Highlights
+
+- Three software layers with RGB feedback driven by Live
+- Session Ring, Clip/Scene launching, and immediate Clip-state LEDs
+- Arrangement Device, Rack/Chain, and track navigation
+- Push 2 Device parameter banks, internal BrowserItem navigation, and automatic Preview
+- Track/Return Sends and a four-track EQ Eight performance layer
+
 ## Compatibility
 
 - Allen & Heath Xone:K3
-- Ableton Live 12 (the script uses Ableton's v3 Control Surface API)
+- Ableton Live 12.3 or later (the script uses Ableton's v3 Control Surface API; Layer 3 automatic EQ Eight insertion uses `Track.insert_device`, introduced in Live 12.3)
 - Xone Controller Editor; the included XML was saved by Editor `V1.0.1` for K3 Unit `V1.0.4`
 - MIDI Channel 16 in the Editor XML (represented internally as channel 15 by Ableton's zero-based Python API)
 
@@ -54,7 +62,7 @@ macOS:
 ~/Music/Ableton/User Library/Remote Scripts/Xone_K3
 
 Windows:
-~/Documents/Ableton/User Library/Remote Scripts/Xone_K3
+%USERPROFILE%\Documents\Ableton\User Library\Remote Scripts\Xone_K3
 ```
 
 Do not copy only `xonek3.py`. The `Xone_K3` folder must contain all four Python files.
@@ -74,16 +82,21 @@ The Session Ring is hidden while the K3 is disconnected or before the script rec
 
 - Session View: the four tracks inside the Session Ring.
 - Arrangement View: the selected track is column 1; the next three visible tracks are columns 2–4.
-- The lower-right encoder selects Arrangement tracks only. Ableton's public Remote Script API cannot reliably scroll the Arrangement viewport to the selected track.
+- When a Return Track is selected in Arrangement: that Return is column 1 and the next three Returns are columns 2–4.
+- The lower-right encoder selects tracks through Live's Arranger navigation. Live does not guarantee that the newly selected track will be scrolled into the visible viewport.
 
 ### Global top encoders
 
-| Left to right | Turn |
-|---|---|
-| 1 | Tempo, 20–999 BPM |
-| 2 | Unassigned |
-| 3 | Arrangement play-position scrub; faster turns move farther |
-| 4 | Master Volume |
+| Left to right | Layer 1 | Layer 2 |
+|---|---|---|
+| 1 | Tempo, 20–999 BPM | Tempo, 20–999 BPM |
+| 2 | Session: hierarchical Browser navigation; Arrangement: horizontal zoom | Session/Arrangement: hierarchical Browser navigation |
+| 3 | Session: select Device focus on the current track; Arrangement: accelerated play-position scrub | Session: select Device focus on the current track; Arrangement: accelerated play-position scrub |
+| 4 | Master Volume | Master Volume |
+
+In Layer 3 Arrangement View, all four top encoders control Bell Frequency for the corresponding tracks. In Layer 3 Session View, encoder 3 is assigned to Device-focus selection while the other three control Bell Frequency for their corresponding columns.
+
+Browser navigation uses the script's internal BrowserItem list and does not open or move the highlighted item in Live's on-screen Browser. The top level begins with Live's color labels, starting at Favorites, followed by categories such as Sounds and Drums. Turning selects a relative item at the current level and Live's status bar shows the full current path. After a short delay, a previewable selected item is previewed automatically; turning again, loading the item, leaving a Browser-enabled layer, or disconnecting the script stops the previous preview. Turning left beyond the first child returns to the parent level. Pressing top encoder button 2 enters a folder or loads a loadable item into the selected track. The status message, preview, and loaded item use the same BrowserItem. The final insertion position follows Live's current track and Device insertion rules.
 
 ### Top encoder buttons
 
@@ -95,6 +108,8 @@ The Session Ring is hidden while the K3 is disconnected or before the script rec
 | 4 | Stop clips on current track 4 | Back to Arrangement |
 
 In Arrangement, button 4 stays lit while Back to Arrangement is available. In Session, each button stays lit while its track is playing a Session clip.
+
+Exception: in Session Layer 1 and in Layer 2 in either view, button 2 is claimed by the Browser for Enter/Load instead of Clip Stop or Next Locator.
 
 ### 3×4 pots
 
@@ -110,6 +125,8 @@ The three rows control three Sends for the current four tracks:
 
 Press `SHIFT` to change bank. Pots with no corresponding Return Track remain unassigned.
 
+When a Return Track is selected in Arrangement, Layer 1 controls the available Sends on the selected Return and the next three Returns. Disabled Sends, including self-sends, are skipped and later available Sends move forward.
+
 #### Layer 2: Device Bank + Balance
 
 - Upper eight pots: eight parameters from the appointed Device.
@@ -120,11 +137,20 @@ Parameter order comes from Live's built-in `Push2.custom_bank_definitions`, incl
 
 Selecting a new Device, re-entering Layer 2, or leaving and returning to the software layer resets it to the first bank. Turning a mapped pot displays the bank, Device, parameter name, and current value in Live's status bar.
 
-#### Layer 3: Return-to-Return Sends
+#### Layer 3: EQ Eight
 
-The first four Return Tracks are used. Each column is a source Return Track; its three rows control Sends to the other three Return Tracks. A Return is never mapped to send to itself.
+The four columns correspond to the current four tracks:
 
-`SHIFT` is currently unassigned in Layer 3.
+- HI row: Low Cut Frequency
+- MID row: Bell Gain
+- LOW row: High Cut Frequency
+- Four top encoders: Bell Frequency for the corresponding tracks
+
+Entering Layer 3 never edits the Set. Pressing `SHIFT` initializes only the currently selected track. Selecting a Group Track processes the Group itself, not its child tracks.
+
+The script first looks for an EQ Eight with enabled Low Cut, Bell, and High Cut roles whose target parameters can be controlled directly. If found, that EQ is selected and unfolded. If an existing EQ Eight does not yet provide all three roles, Band 1 is initialized as Low Cut, Band 4 as Bell, and Band 8 as High Cut; Low Cut Frequency is set to 10 Hz and High Cut Frequency to 22 kHz. If an existing EQ is inaccessible because its target parameters are mapped to Rack Macros, the script inserts a normal EQ Eight at the end of the selected track and applies the same initialization.
+
+Automatic native-device insertion requires `Track.insert_device`, available in Ableton Live 12.3 and later.
 
 ### Three button rows below the pots
 
@@ -155,8 +181,8 @@ The grid maps left-to-right, then top-to-bottom, to four tracks × four scenes i
 
 | Control | Function |
 |---|---|
-| Turn left encoder | Move Session Ring left/right |
-| Hold and turn left encoder | Move Session Ring up/down |
+| Turn left encoder | Select the previous/next visible track and make it the first column of the Session Ring |
+| Press left encoder | Toggle Arrangement Record; this also works from Session View |
 | Turn right encoder | Select the previous/next Scene; the Ring follows when needed |
 | Press right encoder | Fire the selected Scene |
 
@@ -182,16 +208,18 @@ LED states:
 - Selected and on: yellow
 - Selected and bypassed: red
 
-When a Device is selected, the script expands the selected normal Device and collapses the other normal Devices. For Devices inside a Rack, it expands the Rack path, shows Macro/Device, and hides Chains.
+When a Device is selected, the script expands the selected normal Device and collapses the other normal Devices. For a Device inside a Rack or Drum Rack, it selects every containing Chain from outermost to innermost, expands the full Rack path, and shows the current Chain Devices. Nested Racks follow the same rule.
 
 ### Bottom encoders
 
 | Control | Function |
 |---|---|
 | Turn left encoder | Vertical Arrangement zoom |
-| Hold and turn left encoder | Horizontal Arrangement zoom |
-| Turn right encoder | Select previous/next visible track |
-| Press right encoder | Toggle Arrangement Record |
+| Press left encoder | Toggle Arrangement Record |
+| Turn right encoder | Select a track through Arranger up/down navigation |
+| Press right encoder | Re-enable Automation when automation can be restored |
+
+Horizontal Arrangement zoom is assigned to top encoder 2 in Layer 1; it does not use a press-and-turn gesture.
 
 ## Layer and Bank LEDs
 
@@ -203,6 +231,13 @@ Actual colors in the included XML:
 | SHIFT | Bank 1 white, Bank 2 yellow, Bank 3 green |
 
 Latching Layers must be off so the script can use the three layer note numbers as independent RGB feedback channels.
+
+## Known Limitations
+
+- Live's public Remote Script API has no direct command to make the Arrangement scrollbar precisely follow the selected track. The script uses the same kind of directional `scroll_view` navigation used by native control surfaces, but Live may change selection or focus without moving the visible viewport.
+- The API does not expose the Arrangement Zoom Hot Spot or visible time range, so play-position scrubbing cannot guarantee that the position remains centered on screen.
+- Device selection attempts to show the complete Device and place it as far left as possible. Live still decides the final position for Racks, nested Racks, and different Detail panel widths.
+- Internal BrowserItem navigation intentionally does not control the on-screen Browser. Use the path shown in Live's status bar.
 
 ## Troubleshooting
 
