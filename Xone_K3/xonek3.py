@@ -1,5 +1,3 @@
-import math
-
 import Live
 
 from ableton.v3.control_surface import ControlSurface, ControlSurfaceSpecification
@@ -48,6 +46,7 @@ class XoneK3(ControlSurface):
         self._session_scene_offset = 0
         self._selected_device_track = None
         self._positioning_device = False
+        self._device_focus_generation = 0
         self._scroll_generations = [0, 0]
         self._scroll_directions = [None, None]
         self._led_states = {}
@@ -155,9 +154,6 @@ class XoneK3(ControlSurface):
         if index == 2 and not self._is_arranger():
             self._select_relative_device(delta)
             return
-        if self._active_layer == 2:
-            self._adjust_layer3_bell_frequency(index, delta)
-            return
         if index == 0:
             self.song.tempo = max(20.0, min(999.0, self.song.tempo + delta * 0.2))
         elif index == 1 and self._is_arranger():
@@ -236,7 +232,7 @@ class XoneK3(ControlSurface):
             return
 
         if self._is_arranger():
-            devices = self._flatten_selected_track_devices()
+            devices = self._pad_selectable_devices()
             device_index = self._device_index_for_pad(index)
             if device_index < len(devices):
                 device = devices[device_index]
@@ -268,12 +264,7 @@ class XoneK3(ControlSurface):
             if index == 0:
                 self._zoom_arranger_vertical(delta)
             else:
-                direction = (
-                    Live.Application.Application.View.NavDirection.down
-                    if delta > 0
-                    else Live.Application.Application.View.NavDirection.up
-                )
-                self._mackie_scroll(1, direction, abs(delta))
+                self._select_arrangement_track(delta)
         else:
             if index == 0:
                 self._select_session_track(delta)
@@ -285,11 +276,8 @@ class XoneK3(ControlSurface):
             return
         if index == 0:
             self.song.record_mode = not self.song.record_mode
-        elif self._is_arranger():
-            if self.song.re_enable_automation_enabled:
-                self.song.re_enable_automation()
-        else:
-            self.song.view.selected_scene.fire()
+        elif self.song.re_enable_automation_enabled:
+            self.song.re_enable_automation()
 
     def _on_shift(self, value):
         if not value:
@@ -303,10 +291,8 @@ class XoneK3(ControlSurface):
             self.show_message(
                 'Xone K3 Layer 1 · Sends {}–{}'.format(start, start + 2)
             )
-        elif self._active_layer == 1:
-            self._cycle_push_bank()
         else:
-            self._initialize_layer3_eqs()
+            self._cycle_push_bank()
 
         self._refresh_shift_led()
 
@@ -330,7 +316,7 @@ class XoneK3(ControlSurface):
     def _reset_active_bank(self):
         self._layer_banks[self._active_layer] = 0
         if (
-            self._active_layer == 1
+            self._active_layer in (1, 2)
             and self._push_parameter_bank is not None
             and self._push_bank_device == self.song.appointed_device
         ):
@@ -362,10 +348,8 @@ class XoneK3(ControlSurface):
                 self._bind_return_sends(pots)
             else:
                 self._bind_track_sends(pots)
-        elif self._active_layer == 1:
-            self._bind_device_and_balance(pots)
         else:
-            self._bind_track_eqs(pots)
+            self._bind_device_and_balance(pots)
 
     def _bind_track_sends(self, pots):
         tracks = self._controlled_tracks()
@@ -389,6 +373,7 @@ class XoneK3(ControlSurface):
 
     def _bind_device_and_balance(self, pots):
         device = self.song.appointed_device
+        layer_number = self._active_device_layer() + 1
         parameter_infos = self._push_bank_parameter_infos()
         bank_name = self._push_bank_name()
         for index, (parameter, display_name) in enumerate(
@@ -397,7 +382,8 @@ class XoneK3(ControlSurface):
             if parameter is not None:
                 pots[index].connect_to(parameter)
                 self._bound_pot_infos[index] = (
-                    'K3 L2 · {} · {} · {}'.format(
+                    'K3 L{} · {} · {} · {}'.format(
+                        layer_number,
                         bank_name,
                         device.name,
                         display_name,
@@ -410,7 +396,11 @@ class XoneK3(ControlSurface):
             pot_index = 8 + column
             pots[pot_index].connect_to(parameter)
             self._bound_pot_infos[pot_index] = (
-                'K3 L2 · {} · {}'.format(track.name, parameter.name),
+                'K3 L{} · {} · {}'.format(
+                    layer_number,
+                    track.name,
+                    parameter.name,
+                ),
                 parameter,
             )
 
@@ -456,8 +446,9 @@ class XoneK3(ControlSurface):
                 self._push_banking_info,
             )
             bank_count = max(1, min(3, bank.bank_count))
-            self._layer_banks[1] %= bank_count
-            bank.index = self._layer_banks[1]
+            layer = self._active_device_layer()
+            self._layer_banks[layer] %= bank_count
+            bank.index = self._layer_banks[layer]
             bank.add_parameters_listener(
                 self._on_push_bank_parameters_changed
             )
@@ -485,43 +476,56 @@ class XoneK3(ControlSurface):
             pass
 
     def _on_push_bank_parameters_changed(self):
-        if self._active_layer == 1 and not self._disconnected:
+        if self._active_layer in (1, 2) and not self._disconnected:
             self.schedule_message(1, self._rebind_push_bank)
 
     def _rebind_push_bank(self):
-        if self._active_layer == 1 and not self._disconnected:
+        if self._active_layer in (1, 2) and not self._disconnected:
             self._bind_pots()
 
     def _cycle_push_bank(self):
+        layer = self._active_device_layer()
         device = self.song.appointed_device
         if device is None:
-            self._layer_banks[1] = (self._layer_banks[1] + 1) % 3
+            self._layer_banks[layer] = (self._layer_banks[layer] + 1) % 3
             self.show_message(
-                'Xone K3 Layer 2 · Bank {}'.format(self._layer_banks[1] + 1)
+                'Xone K3 Layer {} · Bank {}'.format(
+                    layer + 1,
+                    self._layer_banks[layer] + 1,
+                )
             )
             return
 
         self._ensure_push_parameter_bank(device)
         bank = self._push_parameter_bank
         if bank is None:
-            self._layer_banks[1] = (self._layer_banks[1] + 1) % 3
+            self._layer_banks[layer] = (self._layer_banks[layer] + 1) % 3
         else:
             bank_count = max(1, min(3, bank.bank_count))
-            self._layer_banks[1] = (self._layer_banks[1] + 1) % bank_count
-            bank.index = self._layer_banks[1]
+            self._layer_banks[layer] = (
+                self._layer_banks[layer] + 1
+            ) % bank_count
+            bank.index = self._layer_banks[layer]
         self._bind_pots()
         self.show_message(
-            'Xone K3 Layer 2 · {}'.format(self._push_bank_name())
+            'Xone K3 Layer {} · {}'.format(
+                layer + 1,
+                self._push_bank_name(),
+            )
         )
 
     def _push_bank_name(self):
+        layer = self._active_device_layer()
         bank = self._push_parameter_bank
         if bank is not None:
             name = getattr(bank, 'name', '')
             if name:
                 return 'Bank {} ({})'.format(bank.index + 1, name)
             return 'Bank {}'.format(bank.index + 1)
-        return 'Bank {}'.format(self._layer_banks[1] + 1)
+        return 'Bank {}'.format(self._layer_banks[layer] + 1)
+
+    def _active_device_layer(self):
+        return self._active_layer if self._active_layer in (1, 2) else 1
 
     @staticmethod
     def _is_mappable_parameter(parameter):
@@ -532,7 +536,7 @@ class XoneK3(ControlSurface):
         )
 
     def _fallback_device_parameter_infos(self, device):
-        start = 1 + self._layer_banks[1] * 8
+        start = 1 + self._layer_banks[self._active_device_layer()] * 8
         return tuple(
             (parameter, parameter.name)
             for parameter in list(device.parameters)[start:start + 8]
@@ -555,311 +559,6 @@ class XoneK3(ControlSurface):
                     'K3 L1 · {} · {}'.format(source.name, parameter.name),
                     parameter,
                 )
-
-    def _bind_track_eqs(self, pots):
-        for column, track in enumerate(self._controlled_tracks()):
-            role_parameters = self._find_ready_eq8_roles(track)
-            if role_parameters is None:
-                continue
-            parameters = (
-                role_parameters['low_frequency'],
-                role_parameters['bell_gain'],
-                role_parameters['high_frequency'],
-            )
-            labels = ('Low Cut Frequency', 'Bell Gain', 'High Cut Frequency')
-            for row, (parameter, label) in enumerate(zip(parameters, labels)):
-                pot_index = row * 4 + column
-                pots[pot_index].connect_to(parameter)
-                self._bound_pot_infos[pot_index] = (
-                    'K3 L3 · {} · {}'.format(track.name, label),
-                    parameter,
-                )
-
-    def _adjust_layer3_bell_frequency(self, column, delta):
-        if not delta:
-            return
-        track = self._track_at(column)
-        role_parameters = (
-            self._find_ready_eq8_roles(track) if track is not None else None
-        )
-        if role_parameters is None:
-            return
-        parameter = role_parameters['bell_frequency']
-        minimum = float(parameter.min)
-        maximum = float(parameter.max)
-        current = float(parameter.value)
-        if minimum > 0.0 and maximum > minimum:
-            log_min = math.log(minimum)
-            log_max = math.log(maximum)
-            normalized = (
-                math.log(max(minimum, current)) - log_min
-            ) / (log_max - log_min)
-            normalized = max(0.0, min(1.0, normalized + delta * 0.01))
-            parameter.value = math.exp(
-                log_min + normalized * (log_max - log_min)
-            )
-        else:
-            parameter.value = max(
-                minimum,
-                min(maximum, current + (maximum - minimum) * delta * 0.01),
-            )
-        self._show_parameter(
-            'K3 L3 · {} · Bell Frequency'.format(track.name),
-            parameter,
-        )
-
-    def _initialize_layer3_eqs(self):
-        track = self.song.view.selected_track
-        if track is None:
-            self.show_message('K3 L3 EQ Eight · no selected track')
-            return
-
-        device = self._find_ready_eq8(track)
-        state = 'ready'
-        if device is not None:
-            self._set_standard_eq8_frequency_endpoints(device)
-        else:
-            device = self._find_initializable_eq8(track)
-            state = 'configured'
-            if device is None:
-                device = self._insert_eq8(track)
-                state = 'created'
-            if device is None or not self._configure_standard_eq8(device):
-                self.show_message(
-                    'K3 L3 EQ Eight · failed: {}'.format(track.name)
-                )
-                return
-
-        self._focus_device(device)
-        self._bind_pots()
-        self.show_message(
-            'K3 L3 EQ Eight · {} · {}'.format(track.name, state)
-        )
-
-    def _find_ready_eq8(self, track):
-        for device in self._eq8_devices(track):
-            if self._eq8_roles(device) is not None:
-                return device
-        return None
-
-    def _find_ready_eq8_roles(self, track):
-        device = self._find_ready_eq8(track)
-        return self._eq8_roles(device) if device is not None else None
-
-    def _find_initializable_eq8(self, track):
-        for device in self._eq8_devices(track):
-            parameters = []
-            for band in (1, 4, 8):
-                band_parameters = self._eq8_band_parameters(device, band)
-                names = ('on', 'type', 'frequency')
-                if band == 4:
-                    names += ('gain',)
-                parameters.extend(
-                    band_parameters.get(name) for name in names
-                )
-            if all(
-                parameter is not None
-                and getattr(parameter, 'is_enabled', True)
-                for parameter in parameters
-            ):
-                return device
-        return None
-
-    def _insert_eq8(self, track):
-        insert_device = getattr(track, 'insert_device', None)
-        if insert_device is None:
-            return None
-        before = tuple(self._eq8_devices(track))
-        try:
-            inserted = insert_device('EQ Eight')
-        except (AttributeError, RuntimeError, TypeError):
-            return None
-        if getattr(inserted, 'class_name', '') == 'Eq8':
-            return inserted
-        for device in reversed(self._eq8_devices(track)):
-            if device not in before:
-                return device
-        return None
-
-    def _configure_standard_eq8(self, device):
-        configuration = (
-            (1, 'low_cut'),
-            (4, 'bell'),
-            (8, 'high_cut'),
-        )
-        for band, role in configuration:
-            parameters = self._eq8_band_parameters(device, band)
-            on_parameter = parameters.get('on')
-            type_parameter = parameters.get('type')
-            frequency_parameter = parameters.get('frequency')
-            gain_parameter = parameters.get('gain')
-            if (
-                on_parameter is None
-                or type_parameter is None
-                or frequency_parameter is None
-                or (band == 4 and gain_parameter is None)
-                or not getattr(on_parameter, 'is_enabled', True)
-                or not getattr(type_parameter, 'is_enabled', True)
-                or not getattr(frequency_parameter, 'is_enabled', True)
-                or (
-                    band == 4
-                    and not getattr(gain_parameter, 'is_enabled', True)
-                )
-                or not self._set_eq8_filter_type(type_parameter, role)
-            ):
-                return False
-            on_parameter.value = on_parameter.max
-        self._set_standard_eq8_frequency_endpoints(device)
-        return self._eq8_roles(device) is not None
-
-    def _set_standard_eq8_frequency_endpoints(self, device):
-        low_frequency = self._eq8_band_parameters(
-            device,
-            1,
-        ).get('frequency')
-        high_frequency = self._eq8_band_parameters(
-            device,
-            8,
-        ).get('frequency')
-        if low_frequency is not None:
-            low_frequency.value = low_frequency.min
-        if high_frequency is not None:
-            high_frequency.value = high_frequency.max
-
-    def _eq8_roles(self, device):
-        roles = {}
-        for band in range(1, 9):
-            parameters = self._eq8_band_parameters(device, band)
-            on_parameter = parameters.get('on')
-            type_parameter = parameters.get('type')
-            frequency = parameters.get('frequency')
-            gain = parameters.get('gain')
-            if (
-                on_parameter is None
-                or type_parameter is None
-                or frequency is None
-                or on_parameter.value
-                <= (on_parameter.min + on_parameter.max) / 2.0
-            ):
-                continue
-            role = self._eq8_filter_role(type_parameter)
-            if role == 'low_cut' and 'low_frequency' not in roles:
-                if getattr(frequency, 'is_enabled', True):
-                    roles['low_frequency'] = frequency
-            elif role == 'bell' and 'bell_frequency' not in roles:
-                if (
-                    gain is not None
-                    and getattr(frequency, 'is_enabled', True)
-                    and getattr(gain, 'is_enabled', True)
-                ):
-                    roles['bell_frequency'] = frequency
-                    roles['bell_gain'] = gain
-            elif role == 'high_cut' and getattr(
-                frequency,
-                'is_enabled',
-                True,
-            ):
-                roles['high_frequency'] = frequency
-        required = (
-            'low_frequency',
-            'bell_frequency',
-            'bell_gain',
-            'high_frequency',
-        )
-        return roles if all(name in roles for name in required) else None
-
-    def _eq8_devices(self, track):
-        devices = []
-        for device in getattr(track, 'devices', ()):
-            self._append_device_tree(device, devices)
-        return [
-            device
-            for device in devices
-            if getattr(device, 'class_name', '') == 'Eq8'
-        ]
-
-    def _eq8_band_parameters(self, device, band):
-        return {
-            'on': self._parameter_by_original_name(
-                device,
-                '{} Filter On A'.format(band),
-            ),
-            'type': self._parameter_by_original_name(
-                device,
-                '{} Filter Type A'.format(band),
-            ),
-            'frequency': self._parameter_by_original_name(
-                device,
-                '{} Frequency A'.format(band),
-            ),
-            'gain': self._parameter_by_original_name(
-                device,
-                '{} Gain A'.format(band),
-            ),
-        }
-
-    @staticmethod
-    def _parameter_by_original_name(device, wanted_name):
-        for parameter in getattr(device, 'parameters', ()):
-            if getattr(parameter, 'original_name', '') == wanted_name:
-                return parameter
-            if getattr(parameter, 'name', '') == wanted_name:
-                return parameter
-        return None
-
-    def _eq8_filter_role(self, parameter):
-        try:
-            display = parameter.str_for_value(parameter.value)
-        except (AttributeError, RuntimeError, TypeError):
-            display = ''
-        normalized = ' '.join(str(display).lower().split())
-        if 'low' in normalized and 'cut' in normalized:
-            return 'low_cut'
-        if 'high' in normalized and 'cut' in normalized:
-            return 'high_cut'
-        if 'bell' in normalized:
-            return 'bell'
-        fallback_roles = {
-            0: 'low_cut',
-            1: 'low_cut',
-            3: 'bell',
-            6: 'high_cut',
-            7: 'high_cut',
-        }
-        return fallback_roles.get(
-            int(round(parameter.value - parameter.min))
-        )
-
-    def _set_eq8_filter_type(self, parameter, role):
-        items = tuple(getattr(parameter, 'value_items', ()))
-        matches = []
-        for index, item in enumerate(items):
-            normalized = ' '.join(str(item).lower().split())
-            if role == 'low_cut' and 'low' in normalized and 'cut' in normalized:
-                matches.append((index, normalized))
-            elif role == 'high_cut' and 'high' in normalized and 'cut' in normalized:
-                matches.append((index, normalized))
-            elif role == 'bell' and 'bell' in normalized:
-                matches.append((index, normalized))
-        if matches:
-            preferred = next(
-                (index for index, name in matches if '12' in name),
-                matches[0][0],
-            )
-            if len(items) > 1:
-                parameter.value = parameter.min + (
-                    parameter.max - parameter.min
-                ) * preferred / (len(items) - 1)
-            else:
-                parameter.value = parameter.min
-            return True
-
-        fallback_indices = {'low_cut': 1, 'bell': 3, 'high_cut': 6}
-        index = fallback_indices.get(role)
-        if index is None or parameter.max - parameter.min < index:
-            return False
-        parameter.value = parameter.min + index
-        return True
 
     # ------------------------------------------------------------------
     # Session and Arrangement navigation
@@ -891,6 +590,7 @@ class XoneK3(ControlSurface):
         if self._positioning_device:
             return
         self._layer_banks[1] = 0
+        self._layer_banks[2] = 0
         if (
             self._push_parameter_bank is not None
             and self._push_bank_device == self.song.appointed_device
@@ -901,24 +601,57 @@ class XoneK3(ControlSurface):
 
     def _update_selected_device_listener(self):
         previous_track = self._selected_device_track
-        if previous_track is not None:
-            view = previous_track.view
-            if view.selected_device_has_listener(self._on_selected_device_changed):
-                view.remove_selected_device_listener(self._on_selected_device_changed)
+        self._selected_device_track = None
+        self._remove_selected_device_listener(previous_track)
 
         track = self.song.view.selected_track
+        if not self._track_is_in_current_song(track):
+            return
         self._selected_device_track = track
-        if track is not None:
+        try:
             view = track.view
             if not view.selected_device_has_listener(self._on_selected_device_changed):
                 view.add_selected_device_listener(self._on_selected_device_changed)
+        except Exception:
+            self._selected_device_track = None
+            return
         self._on_selected_device_changed()
+
+    def _remove_selected_device_listener(self, track):
+        if not self._track_is_in_current_song(track):
+            return
+        try:
+            view = track.view
+            if view.selected_device_has_listener(self._on_selected_device_changed):
+                view.remove_selected_device_listener(self._on_selected_device_changed)
+        except Exception:
+            pass
+
+    def _track_is_in_current_song(self, track):
+        if track is None:
+            return False
+        try:
+            tracks = (
+                tuple(self.song.tracks)
+                + tuple(self.song.return_tracks)
+                + (self.song.master_track,)
+            )
+        except (AttributeError, RuntimeError, TypeError):
+            return False
+        return any(current_track is track for current_track in tracks)
 
     def _on_selected_device_changed(self):
         if self._positioning_device:
             return
         track = self._selected_device_track
-        device = track.view.selected_device if track is not None else None
+        if not self._track_is_in_current_song(track):
+            self._selected_device_track = None
+            return
+        try:
+            device = track.view.selected_device
+        except Exception:
+            self._selected_device_track = None
+            return
         if device is not None and device != self.song.appointed_device:
             self.song.appointed_device = device
         self._bind_pots()
@@ -948,6 +681,27 @@ class XoneK3(ControlSurface):
         self._apply_session_ring_offsets()
         self._bind_all_parameters()
         self._refresh_leds()
+
+    def _select_arrangement_track(self, delta):
+        tracks = list(self.song.visible_tracks)
+        tracks.extend(
+            track
+            for track in self.song.return_tracks
+            if track not in tracks
+        )
+        if not tracks:
+            return
+        selected = self.song.view.selected_track
+        old_index = tracks.index(selected) if selected in tracks else 0
+        new_index = max(0, min(len(tracks) - 1, old_index + delta))
+        if new_index == old_index and selected in tracks:
+            return
+        self.song.view.selected_track = tracks[new_index]
+        self._bind_all_parameters()
+        self._refresh_leds()
+        self.show_message(
+            'K3 Track · {}'.format(tracks[new_index].name)
+        )
 
     def _select_relative_scene(self, delta):
         scenes = list(self.song.scenes)
@@ -1041,9 +795,7 @@ class XoneK3(ControlSurface):
             self.application.view.zoom_view(direction, 'Arranger', False)
 
     def _browser_navigation_active(self):
-        return self._active_layer == 1 or (
-            self._active_layer == 0 and not self._is_arranger()
-        )
+        return self._is_arranger() and self._active_layer in (1, 2)
 
     def _navigate_browser(self, delta):
         if not delta:
@@ -1347,6 +1099,25 @@ class XoneK3(ControlSurface):
             self._append_device_tree(device, devices)
         return devices
 
+    def _pad_selectable_devices(self):
+        if self._active_layer == 1:
+            track = self.song.view.selected_track
+            devices = []
+            for device in getattr(track, 'devices', ()):
+                devices.append(device)
+                self._append_nested_racks(device, devices)
+            return devices
+        return self._flatten_selected_track_devices()
+
+    def _append_nested_racks(self, device, result):
+        if not getattr(device, 'can_have_chains', False):
+            return
+        for chain in device.chains:
+            for nested_device in chain.devices:
+                if getattr(nested_device, 'can_have_chains', False):
+                    result.append(nested_device)
+                    self._append_nested_racks(nested_device, result)
+
     @staticmethod
     def _device_index_for_pad(pad_index):
         return pad_index
@@ -1359,6 +1130,8 @@ class XoneK3(ControlSurface):
                     self._append_device_tree(nested_device, result)
 
     def _focus_device(self, device):
+        self._device_focus_generation += 1
+        generation = self._device_focus_generation
         self.application.view.show_view('Detail/DeviceChain')
         self.application.view.focus_view('Detail/DeviceChain')
         self._select_device_chain_path(device)
@@ -1367,10 +1140,56 @@ class XoneK3(ControlSurface):
         self._set_device_folding(device)
         self.schedule_message(
             1,
-            lambda selected_device=device: self._finalize_rack_view(
-                selected_device
-            ),
+            lambda selected_device=device, expected=generation:
+                self._finalize_rack_view(
+                    selected_device,
+                    expected,
+                )
         )
+
+    def _finalize_rack_view(self, selected_device, generation):
+        if (
+            self._disconnected
+            or generation != self._device_focus_generation
+            or selected_device != self.song.appointed_device
+        ):
+            return
+        self._select_device_chain_path(selected_device)
+        for device in self._device_path(selected_device):
+            if not getattr(device, 'can_have_chains', False):
+                continue
+            view = getattr(device, 'view', None)
+            if view is None:
+                continue
+            if hasattr(view, 'is_collapsed'):
+                view.is_collapsed = False
+            if hasattr(view, 'is_showing_chains'):
+                try:
+                    view.is_showing_chains = False
+                except (RuntimeError, TypeError):
+                    pass
+            if hasattr(view, 'is_showing_chain_devices'):
+                try:
+                    view.is_showing_chain_devices = True
+                except (RuntimeError, TypeError):
+                    pass
+        self.schedule_message(
+            1,
+            lambda selected_device=selected_device, expected=generation:
+                self._position_focused_device(
+                    selected_device,
+                    expected,
+                )
+        )
+
+    def _position_focused_device(self, selected_device, generation):
+        if (
+            self._disconnected
+            or generation != self._device_focus_generation
+            or selected_device != self.song.appointed_device
+        ):
+            return
+        self._position_device_in_view(selected_device)
 
     def _set_device_folding(self, selected_device):
         for device in self._flatten_selected_track_devices():
@@ -1383,25 +1202,6 @@ class XoneK3(ControlSurface):
             ):
                 view.is_collapsed = device != selected_device
 
-    def _finalize_rack_view(self, selected_device):
-        if self._disconnected:
-            return
-        self._select_device_chain_path(selected_device)
-        for device in self._device_path(selected_device):
-            if not getattr(device, 'can_have_chains', False):
-                continue
-            view = getattr(device, 'view', None)
-            if view is None:
-                continue
-            if hasattr(view, 'is_collapsed'):
-                view.is_collapsed = False
-            if hasattr(view, 'is_showing_chain_devices'):
-                try:
-                    view.is_showing_chain_devices = True
-                except (RuntimeError, TypeError):
-                    pass
-        self._position_device_in_view(selected_device)
-
     def _select_device_chain_path(self, selected_device):
         for rack, chain in self._device_chain_path(selected_device):
             view = getattr(rack, 'view', None)
@@ -1413,6 +1213,11 @@ class XoneK3(ControlSurface):
                 view.selected_chain = chain
             except (AttributeError, RuntimeError, TypeError):
                 continue
+            if hasattr(view, 'is_showing_chains'):
+                try:
+                    view.is_showing_chains = False
+                except (RuntimeError, TypeError):
+                    pass
             if hasattr(view, 'is_showing_chain_devices'):
                 try:
                     view.is_showing_chain_devices = True
@@ -1456,6 +1261,11 @@ class XoneK3(ControlSurface):
         finally:
             if can_collapse_rack:
                 selected_view.is_collapsed = False
+                if hasattr(selected_view, 'is_showing_chains'):
+                    try:
+                        selected_view.is_showing_chains = False
+                    except (RuntimeError, TypeError):
+                        pass
                 if hasattr(selected_view, 'is_showing_chain_devices'):
                     try:
                         selected_view.is_showing_chain_devices = True
@@ -1549,7 +1359,7 @@ class XoneK3(ControlSurface):
         notes = [note for row in self._PAD_NOTES for note in row]
         if self._is_arranger():
             self._session_pad_signature = None
-            devices = self._flatten_selected_track_devices()
+            devices = self._pad_selectable_devices()
             selected = self.song.appointed_device
             for index, note in enumerate(notes):
                 device_index = self._device_index_for_pad(index)
@@ -1709,7 +1519,15 @@ class XoneK3(ControlSurface):
     def _scheduled_refresh(self):
         if not self._disconnected:
             if self._hardware_connected:
-                self._refresh_leds_safely()
+                if self._is_arranger():
+                    self._refresh_leds_safely()
+                else:
+                    try:
+                        self._refresh_layer_led()
+                        self._refresh_shift_led()
+                        self._refresh_mixer_leds()
+                    except (RuntimeError, TypeError):
+                        pass
             self.schedule_message(5, self._scheduled_refresh)
 
     def _is_arranger(self):
@@ -1733,11 +1551,9 @@ class XoneK3(ControlSurface):
             self.song.remove_is_playing_listener(self._on_transport_state_changed)
         if hasattr(self.song, 'appointed_device_has_listener') and self.song.appointed_device_has_listener(self._on_appointed_device_changed):
             self.song.remove_appointed_device_listener(self._on_appointed_device_changed)
-        if self._selected_device_track is not None:
-            view = self._selected_device_track.view
-            if view.selected_device_has_listener(self._on_selected_device_changed):
-                view.remove_selected_device_listener(self._on_selected_device_changed)
-            self._selected_device_track = None
+        selected_device_track = self._selected_device_track
+        self._selected_device_track = None
+        self._remove_selected_device_listener(selected_device_track)
         self._remove_track_transport_listeners()
         for control, callback in self._value_listeners:
             if control.value_has_listener(callback):
