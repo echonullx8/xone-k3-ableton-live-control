@@ -2,32 +2,24 @@
 
 [English guide](README_EN.md)
 
-这是一个为 Allen & Heath Xone:K3 编写的 Ableton Live 12 MIDI Remote Script。它提供 4×4 Session Ring、Arrangement 设备导航、三层软件映射、Push 2 设备参数 Bank、脚本内 Browser 导航，以及由 Live 驱动的多色 LED 反馈。
+为 Allen & Heath Xone:K3 编写的 Ableton Live 12 Remote Script，包含 Session Clip 控制、Arrangement 设备导航、Push 设备参数分组、Browser 浏览和多色灯光反馈。
 
-本说明按仓库当前的 `Xone_K3/xonek3.py`、`elements.py`、`midi.py` 和 `Xone K3 Ableton.xml` 重新编写，不沿用旧版功能表。
+三个 Layer 分别用于 Send、设备参数和现场演出：
 
-## 文件与兼容性
+| Layer | 用途 |
+|---|---|
+| 1 | 调整四条轨道的 Send |
+| 2 | 调整设备参数和四轨 Pan |
+| 3（Session） | Performance 演出界面：启动 Clip、静音、选择设备和调整十二个参数，并控制 Arrangement 录制 |
 
-```text
-Xone_K3/
-├── __init__.py
-├── elements.py
-├── midi.py
-└── xonek3.py
+演出时，可以选择另一条轨道、Return 或 Main 调整设备，同时让 Clip、Mute 和推子继续控制当前四条轨道。
 
-Xone K3 Ableton.xml
-README.md
-README_EN.md
-```
+## 文件与要求
 
-安装 Remote Script 时必须保留完整的 `Xone_K3` 文件夹，不能只复制 `xonek3.py`。
-
-- Allen & Heath Xone:K3
-- Ableton Live 12，使用 Live 的 v3 Control Surface API
-- MIDI Channel 16（Live 的 Python API 内部以从 0 开始的 Channel 15 表示）
-- 随附 XML 的元数据：Xone Controller Editor `V1.0.1`、K3 Unit `V1.0.4`
-
-其他 Live、Editor 或 K3 固件版本没有逐一验证。
+- Ableton Live 12；Allen & Heath Xone:K3。无需安装额外的 API 或开发工具。
+- MIDI Channel 16；Latching Layers **OFF**；LED Mode **Remote**。
+- 安装完整 `Xone_K3` 文件夹（四个 Python 文件），并将本仓库的 `Xone K3 Ableton.xml` 写入硬件。只更新脚本不会更新硬件灯色。
+- XML 元数据：Editor V1.0.1、K3 V1.0.4。其他组合未逐一验证。
 
 ## 安装
 
@@ -55,7 +47,7 @@ README_EN.md
 7. 再按一下 Setup 编码器保存并返回 Setup Mode。
 8. 按保持黄色的 `SHIFT` 退出；K3 会重新启动。
 
-设置完成后，K3 自身不会显示硬件 Layer 颜色，灯全部熄灭是正常状态。启动 Live、加载 `Xone_K3` 并操作一次 K3 后，灯光才由脚本接管：每按一次 `LAYER`，软件 Layer 依次切换，灯色为 **Layer 1 红 → Layer 2 黄 → Layer 3 绿 → Layer 1 红**。`SHIFT` 显示当前 Bank：**Bank 1 白 → Bank 2 黄 → Bank 3 绿**；每次切换主 Layer 后 Bank 回到 1，因此 `SHIFT` 回到白色。
+设置完成后，K3 自身不会显示硬件 Layer 颜色，灯全部熄灭是正常状态。启动 Live、加载 `Xone_K3` 并操作一次 K3 后，灯光才由脚本接管：每按一次 `LAYER`，软件 Layer 依次切换，灯色为 **Layer 1 黄 → Layer 2 绿 → Layer 3 红 → Layer 1 黄**。`SHIFT` 显示当前 Bank：**Bank 1 白 → Bank 2 黄 → Bank 3 绿**；每次切换主 Layer 后 Bank 回到 1，因此 `SHIFT` 回到白色。
 
 如果必须按三次 `LAYER`，Live 才显示一次 Layer 变化，说明硬件仍在 State 2–5，而不是 State 1。
 
@@ -82,175 +74,107 @@ Windows（默认 User Library 位置）:
 
 K3 未连接，或脚本还没收到 K3 MIDI 时，Session Ring 会隐藏；重新连接后操作任意控件，Ring 会恢复。
 
-## 四列轨道如何确定
+## Layer 与灯光
 
-- Session View：Session Ring 内的四条轨道。
-- Arrangement View：当前选中轨道是第 1 列，后面三条可见轨道是第 2–4 列。
-- Arrangement 选中 Return Track：所选 Return 是第 1 列，后面三条 Return 是第 2–4 列。
-- Arrangement 选中 Master Track：四列轨道控件不映射；顶部最右 Master Volume 仍然有效。
+`LAYER` 循环切换软件 Layer：**1 黄 → 2 绿 → 3 红**。硬件 Latching Layers 必须关闭。切换 Layer 时恢复该层 Bank 1。
 
-Arrangement 的选轨只遍历真实轨道和 Return，不会选择 Automation Lane。Live 的公开接口不保证让 Arrangement 画面自动滚到新轨道。
+Session Layer 1/2 和 Arrangement 中，`SHIFT` 切参数／Send Bank，指示色为白、黄、红。**Session Layer 3 中 SHIFT 改为 Arrangement Record：录制红色常亮，未录制灭**，同步鼠标和其他控制器的录制操作。
 
-## 所有 Layer 共用的控件
+## Session View：选轨与 Clip 控制
 
-### 最上方四个旋钮
+- 顶部编码器 2 在三个 Layer 中均选择：可见普通轨道 → Return → Main；反转可返回。
+- 选轨会显示 Device Chain；有选中设备时聚焦该设备。不会改变 Session Ring 或四个推子的绑定范围。
+- 四个推子与 Clip 列始终对应 Session Ring 内的四条普通轨道。选中 Return／Main 后可以控制其设备，但不会把 Return／Main 换到这些推子上。
+- Clip Pad 为四轨 × 四场景，不用于启动整个 Scene。
 
-| 从左到右 | Session View | Arrangement View |
-|---|---|---|
-| 1 | Tempo，20–999 BPM | Tempo，20–999 BPM |
-| 2 | 空置 | Layer 1：水平缩放；Layer 2/3：脚本内 Browser 导航 |
-| 3 | 在当前轨道的完整 Device 树中前后选择 | 水平滚动 Arrangement 画面 |
-| 4 | Master Volume | Master Volume |
+### Session 共用顶部控件
 
-第 3 个旋钮在 Arrangement 中调用 Live 的 Arranger `scroll_view`，移动的是时间轴可视区域，不是播放光标，也不会改变 `current_song_time`。
+| 控件 | 功能 |
+|---|---|
+| 顶部 1 旋转 | Tempo，20–999 BPM，每步 0.2 BPM |
+| 顶部 2 旋转 | 只选择轨道，范围不跟随 |
+| 顶部 3 旋转 | Layer 1/2：在完整设备树中选设备；Layer 3：只选顶层设备 |
+| 顶部 4 旋转 | Main 音量 |
+| 顶部四个按下 | 停止当前四列对应轨道的 Clip |
+| 四根推子 | Session Ring 内四轨 Volume |
+| 4×4 Pad | 四轨 × 四场景 Clip Launch |
 
-### 最上方四个按键
-
-| 从左到右 | Session View | Arrangement View |
-|---|---|---|
-| 1 | 停止第 1 列轨道正在播放的 Clip | 上一个 Locator |
-| 2 | 停止第 2 列轨道正在播放的 Clip | Layer 1：下一个 Locator；Layer 2/3：打开 Browser 项目或加载项目 |
-| 3 | 停止第 3 列轨道正在播放的 Clip | Set/Delete Locator |
-| 4 | 停止第 4 列轨道正在播放的 Clip | Back to Arrangement |
-
-Session 中，对应轨道正在播放 Session Clip 时，上方按键灯常亮。Arrangement 中，第 4 个灯在 Back to Arrangement 可用时常亮；其他操作会短暂闪灯。
-
-### 三排旋钮下方的按键
-
-三个 Layer、两种 View 中功能不变：
-
-| 按键排 | 功能 | 反馈 |
-|---|---|---|
-| HI | Track Activator / Mute | 轨道开启时橙色，Mute 时灭 |
-| MID | Solo | Solo 时蓝色 |
-| LOW | Arm | 可录音轨道 Arm 时红色；不可 Arm 的轨道不亮 |
-
-### 四根推子
-
-始终控制当前四列轨道的 Volume。
-
-## Layer 与 3×4 旋钮
-
-按 `LAYER` 循环 Layer 1、2、3。每次切入一个 Layer，该 Layer 都回到 Bank 1。
+Clip 灯：空位灭、有 Clip 未播放黄、播放绿、录制或等待录制红。硬件未连接／未收到 MIDI 时 Ring 隐藏，操作后恢复。
 
 ### Layer 1：Sends
 
-三排旋钮控制当前四列轨道的三个 Send：
+三排旋钮分别控制当前四轨的三个 Send。SHIFT 循环 Send 1–3、4–6、7–9；不足的位置留空。
 
-- Bank 1：Send 1–3
-- Bank 2：Send 4–6
-- Bank 3：Send 7–9
+### Layer 2：Device Bank＋Pan
 
-按 `SHIFT` 切换 Bank。Return 数量不足时，多出的旋钮不映射。
+前八个旋钮控制当前 Appointed Device 的一个 Push Bank，第三排四个旋钮控制当前四轨 Pan。SHIFT 循环最多三个 Bank。优先使用 Live 的 Push2 Bank 定义，无可用定义时回退原始参数顺序。
 
-Arrangement 选中 Return Track 时，四列改为“所选 Return＋后面三条 Return”；脚本会跳过被禁用的 Send（包括不能发送给自身的 Send），并让后面的可用 Send 顺位补上。
+Layer 1/2 的三排按钮从上到下为 Mute、Solo、Arm：轨道开启黄、Solo 蓝、Arm 红。底部左旋转选普通轨道并移动四轨范围；右旋转选 Scene，超出四行时范围跟随。左下按下切换 Arrangement Record，右下按下 Re-enable Automation。
 
-### Layer 2：Device Bank + Pan
+## Session Layer 3：Performance 演出界面
 
-- 上面 8 个旋钮：当前 Appointed Device 的 8 个参数。
-- 最下面 4 个旋钮：当前四列轨道的 Pan。
-- `SHIFT`：在最多三个 Device Bank 中循环。
-
-参数顺序优先读取 Live 内置的 `Push2.custom_bank_definitions`，也就是 Push 2 的设备 Bank 定义，而不是机械地取参数列表前八项。没有可用定义时，脚本才回退为原始参数列表，每 Bank 8 个参数。转动旋钮时，Live 状态栏显示 Layer、Bank、Device、参数名和当前值。
-
-Arrangement 的 4×4 Device 列表在 Layer 2 使用精简模式：显示所有顶层 Device，并递归显示 Rack 里的 Rack；普通的 Rack 内部 Device 不占 Pad，因此更容易找到 Rack。
-
-### Layer 3：Device Bank + Pan
-
-Layer 3 的 3×4 旋钮与 Layer 2 相同，也有独立的三个 Device Bank。区别在 4×4 Device 列表：Layer 3 显示完整 Device 树，包括 Rack 内的普通 Device。
-
-选择新的 Appointed Device 时，Layer 2 和 Layer 3 都回到各自的 Bank 1。
-
-## Session View
-
-### 4×4 Clip Pads
-
-Pad 按“从左到右、从上到下”对应 4 条轨道 × 4 个 Scene；按下启动对应 Clip Slot。
-
-- 空 Slot：灭
-- 有 Clip、未播放：黄色
-- 正在播放：绿色
-- 正在录制，或排队录制：红色
-
-### 最下方两个旋钮
+### 设备控制
 
 | 控件 | 功能 |
 |---|---|
-| 左旋钮旋转 | 选择上一条/下一条可见轨道，并让它成为 Session Ring 第 1 列 |
-| 左旋钮按下 | 开启/关闭 Arrangement Record；在 Session View 同样有效 |
-| 右旋钮旋转 | 选择上一个/下一个 Scene，Ring 必要时跟随 |
-| 右旋钮按下 | Re-enable Automation；只有存在可恢复的 Automation 时生效 |
+| 顶部 3 旋转 | 选择当前轨道的顶层设备，不进入 Rack 内部 |
+| 第二、三排八个按钮 | 对应设备窗口中的八个设备；按未选设备选择并聚焦，再按已选设备切换 Device On/Bypass |
+| 三排十二个旋钮 | 按 Push Bank 顺序展开，每页十二个参数槽 |
+| 按住左下编码器并旋转 | 前后切换参数页；无循环，首尾停止 |
 
-右旋钮只选择 Scene，不会启动整个 Scene；Clip 仍由 4×4 Pad 启动。
+八设备窗口保持位置：在窗口内选设备不会重排；选到第九个才向后移动一位，反向越界同理。**设备按钮本身不会移动窗口。** 换轨时窗口与参数页回到起点，换设备时参数页回到第一页。
+
+第一页是 Push Bank 1 的八项＋Bank 2 的前四项；第二页从 Bank 2 的后四项继续。缺项留空，不压缩顺序；无可用 Bank 定义时，回退到设备原始参数列表并跳过 Device On。旋钮使用接管机制，避免设备或页面变化导致参数跳变。Macro 顺序以实际 Push Bank 为准，不保证所有设备都对应界面上的连续旋钮。
+
+### 现场混音与录制
+
+| 控件 | 功能 |
+|---|---|
+| 第一排四个按钮 | 当前四列轨道的 Mute |
+| 左下旋转 | 每步移动一轨，Clip／Mute／推子范围一起移动，不改变选中轨道 |
+| 右下旋转 | 每步移动一场景，不改变选中 Scene |
+| 底部两个单独按下 | 不执行操作；左下按住旋转用于参数翻页 |
+| SHIFT | Arrangement Record 开关，录制红色常亮、未录制灭 |
+| LAYER | 保持切换 Layer |
+
+### 八个设备按钮的灯光
+
+Device 和 Rack 使用相同规则：
+
+| 状态 | 灯色 |
+|---|---|
+| 空位／未选中且关闭 | 灭 |
+| 未选中且开启 | 蓝 |
+| 选中且开启 | 黄 |
+| 选中且关闭 | 红 |
+
+灯色表示设备当前的选择与开关状态。如果显示不符，确认硬件已载入本仓库随附的 XML。
 
 ## Arrangement View
 
-### 4×4 Device Pads
-
-Pad 按“从左到右、从上到下”选择当前轨道的 Device：
-
-- Layer 1 / Layer 3：顶层 Device 从左到右；Rack 本体先计入，再按 Chain 顺序递归进入；最多 16 个。
-- Layer 2：只显示顶层 Device 和任意深度的嵌套 Rack，不显示 Rack 内的普通 Device。
-
-按下未选中的 Device 会选中并聚焦它；再次按下当前选中的 Device，会切换它的第一个参数，通常就是 Device On/Bypass。
-
-灯光规则：
-
-- 空位置：灭
-- 未选中的普通 Device：绿色，不用颜色区分 On/Bypass
-- 未选中的 Rack：灭，作为设备组的视觉分隔
-- 选中且启用：黄色
-- 选中且 Bypass：红色
-
-从 K3 选中 Device 时，脚本会显示 Device Chain、选择其所属 Chain、展开目标路径、隐藏 Chain List，并尝试把 Device 完整显示且靠左。普通 Device 中，目标展开，其他普通 Device 折叠；Rack 不参加这条折叠规则。Rack、嵌套 Rack 和面板宽度不同，最终可视位置仍由 Live 决定。
-
-用鼠标在 Live 中选 Device 时，K3 的 Pad 灯和 Layer 2/3 参数 Bank 会同步；脚本不会因为鼠标选择而自动改写其他 Device 的折叠状态。
-
-### 最下方两个旋钮
+在 Live 中切换到 Arrangement View 后，控件按下表工作。
 
 | 控件 | 功能 |
 |---|---|
-| 左旋钮旋转 | Arrangement 垂直缩放 |
-| 左旋钮按下 | 开启/关闭 Arrangement Record |
-| 右旋钮旋转 | 在真实 Track 和 Return Track 中选择，不进入 Automation Lane |
-| 右旋钮按下 | Re-enable Automation；只有存在可恢复的 Automation 时生效 |
+| 顶部 1 旋转／按下 | Tempo／上一个 Locator |
+| 顶部 2 旋转／按下，Layer 1 | 水平缩放／下一个 Locator |
+| 顶部 2 旋转／按下，Layer 2/3 | Browser 导航／进入目录或加载项目 |
+| 顶部 3 旋转／按下 | 水平滚动画面／设置或删除 Locator |
+| 顶部 4 旋转／按下 | Main 音量／Back to Arrangement |
+| 左下旋转／按下 | 垂直缩放／Arrangement Record |
+| 右下旋转／按下 | 选择普通轨道及 Return／Re-enable Automation |
 
-## 脚本内 Browser
+四轨混音范围从当前选中轨道开始；选中 Return 时使用 Return 范围，选中 Main 时四轨控件不映射。三排按钮为 Mute／Solo／Arm。旋钮 Layer 1 为 Sends，Layer 2/3 为八个设备参数＋四轨 Pan，SHIFT 切 Bank。
 
-Browser 只在 **Arrangement View 的 Layer 2/3** 生效：
+4×4 Pad 选择设备，再按已选设备切换开关。Layer 2 列出顶层设备和嵌套 Rack；Layer 1/3 展开完整设备树。Arrangement Pad 灯色：未选普通设备绿（不反映开关）、未选 Rack 灭、选中开启黄、选中关闭红。
 
-- 顶部第 2 个旋钮旋转：在当前层级移动选择。
-- 在子级第一项继续向左：返回上一级。
-- 顶部第 2 个按键按下：有子项时进入下一级；可加载时交给 Live 的当前 Browser 插入目标加载（通常是当前选中轨道）。
-- 停在可预听项目上：短暂延迟后 Preview；继续移动、加载、离开 Browser Layer 或断开脚本时停止上一项 Preview。
+Browser 只在 Arrangement Layer 2/3 生效：顶部 2 旋转浏览，子目录第一项继续往回转可返回；按下进入或加载。可预听项目短暂延迟后预听，移动、加载或离开时停止。路径显示在状态栏，不同步屏幕 Browser 高亮。
 
-第一次使用时，根列表从 Live 的颜色标签开始，然后是 Sounds、Drums、Instruments、Audio Effects、MIDI Effects、Max for Live、Plug-ins、Clips 和 Samples。选择路径显示在 Live 状态栏。这个功能使用 BrowserItem 作为唯一状态，不打开 Live 屏幕 Browser，也不尝试同步屏幕高亮。
+## 使用限制与故障排查
 
-## Layer / Shift 灯
+- Live 的设备面板聚焦、折叠与近似定位受公开 API 和 Rack 布局限制，不保证设备始终靠左或轨道自动滚入画面。
+- Arrangement 水平滚动移动可视区域，不移动播放光标。
+- 替换脚本后须完全重启 Live；XML 要另行在 Editor 中保存到硬件，并关闭 Editor 避免占用端口。
+- 灯色错误先核对是否写入随附 XML、Latching Layers OFF、LED Remote，以及 Live 的 MIDI Output。
 
-| 灯 | 颜色 |
-|---|---|
-| LAYER | Layer 1 红、Layer 2 黄、Layer 3 绿 |
-| SHIFT | Bank 1 白、Bank 2 黄、Bank 3 绿 |
-
-`LAYER` 在 XML 中是 Note 12，`SHIFT` 是 Note 15。Latching Layers 必须关闭，脚本才能用三组反馈 Note 稳定控制颜色。
-
-## 已知限制
-
-- Live 的公开 Remote Script API 没有“选择真实轨道并保证 Arrangement 自动滚到该轨道”的完整命令；脚本能正确选轨，但画面可能不跟随。
-- API 不公开 Arrangement 的 Zoom Hot Spot 或精确可视时间范围。本脚本只调用 Live 的水平滚动与缩放接口，不承诺让播放光标始终留在屏幕内。
-- Device 左对齐是基于 Device Chain 选择和滚动的近似定位；复杂 Rack 中最终位置由 Live 决定。
-- Browser 刻意不显示或控制屏幕 Browser，请以 Live 状态栏路径和听到的 Preview 为准。
-
-## 故障排查
-
-- **Live 没反应**：确认加载了 `Xone K3 Ableton` User Map、Latching Layers 为 OFF、Editor 已关闭，且 Control Surface 的 Input/Output 都是 `XONE:K3`。
-- **列表中没有 Xone_K3**：确认路径是 `Remote Scripts/Xone_K3/__init__.py`，并完全重启 Live。
-- **控制正常但不亮灯**：确认 Live MIDI Output 是 `XONE:K3`，XML 的 LED Mode 是 Remote。
-- **Session Ring 没出现**：操作任意 K3 控件让脚本确认硬件已连接；仍无效时重新插拔 K3，并检查 MIDI 端口。
-- **映射编号突然错乱**：重新插拔 K3，重新加载正确的 User Map；不要同时运行 Xone Controller Editor。
-- **更新脚本后没变化**：完全退出 Live 后再替换 `Xone_K3` 文件夹，然后重新启动。Remote Script 改动不能依赖热重载。
-
-## 获取更新
-
-从仓库 `main` 分支下载最新代码，或使用 GitHub 的 **Code → Download ZIP**。Tagged Release 可能晚于 `main`，需要最新脚本时以 `main` 为准。
+从仓库 `main` 下载当前脚本；Tagged Release 可能落后于 `main`。

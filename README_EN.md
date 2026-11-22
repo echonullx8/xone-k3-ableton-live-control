@@ -2,255 +2,143 @@
 
 [中文说明](README.md)
 
-This is an Ableton Live 12 MIDI Remote Script for the Allen & Heath Xone:K3. It provides a 4×4 Session Ring, Arrangement device navigation, three software layers, Push 2 device parameter banks, an internal Browser navigator, and multicolor LED feedback driven by Live.
+A Live 12 Remote Script for Allen & Heath Xone:K3, with Session clip launching, Arrangement device navigation, Push parameter banks, Browser navigation and multicolor feedback.
 
-This guide was rewritten from the current `Xone_K3/xonek3.py`, `elements.py`, `midi.py`, and `Xone K3 Ableton.xml` files. It does not reuse the obsolete control tables from earlier releases.
+The three layers provide Send, device and live-performance controls:
 
-## Files and compatibility
+| Layer | Use |
+|---|---|
+| 1 | Adjust Sends for four tracks |
+| 2 | Adjust device parameters and four track pans |
+| 3 (Session) | Performance layout for live shows: launch clips, mute tracks, select devices, adjust twelve parameters and control Arrangement recording |
 
-```text
-Xone_K3/
-├── __init__.py
-├── elements.py
-├── midi.py
-└── xonek3.py
+During a performance, select another track, Return or Main to adjust its devices while the clips, mute buttons and faders continue to control the current four-track window.
 
-Xone K3 Ableton.xml
-README.md
-README_EN.md
-```
+## Requirements and installation
 
-Keep the complete `Xone_K3` folder when installing the Remote Script. `xonek3.py` does not work as a standalone file.
+- Ableton Live 12; Allen & Heath Xone:K3. No additional API or developer tools need to be installed.
+- MIDI channel 16; hardware **Latching Layers OFF**; LED mode **Remote**.
+- XML metadata: Controller Editor V1.0.1 and K3 V1.0.4. Other combinations have not been individually verified.
 
-- Allen & Heath Xone:K3
-- Ableton Live 12, using Live's v3 Control Surface API
-- MIDI Channel 16 in the Editor; Live's zero-based Python API represents it as channel 15
-- Included XML metadata: Xone Controller Editor `V1.0.1`, K3 Unit `V1.0.4`
-
-Other Live, Editor, and K3 firmware versions have not been tested individually.
-
-## Installation
-
-### 1. Load the K3 map
-
-1. Connect the K3 and open Xone Controller Editor.
-2. Import `Xone K3 Ableton.xml`.
-3. Save it to User Map slot 2, 3, or 4, then load that map on the K3.
-4. Set hardware **Latching Layers to OFF**.
-5. Keep the LEDs in **Remote** mode.
-6. Quit Xone Controller Editor completely so it does not retain the MIDI port.
-
-The map sends one set of control numbers. `LAYER` and `SHIFT` are managed by the script in software; the additional two note sets let Live request different colors from the same physical LEDs.
-
-#### Set Latching Layers to OFF
-
-This global hardware setting is not written by the XML and must be configured separately in K3 Power On Setup:
-
-1. Disconnect power or USB from the K3.
-2. Hold the bottom-right encoder labelled `POWER ON SETUP` while reconnecting the K3.
-3. `SHIFT` flashes yellow and then remains yellow; the top-left matrix button lights to confirm Setup Mode.
-4. Turn the bottom-right Setup encoder until the second button in the top matrix row lights. This is Latching Layers.
-5. Press the Setup encoder to open the option.
-6. Turn the encoder until **all option indicator LEDs are off**. This is **State 1: LATCHING LAYERS OFF**. States 2–5 are all ON, illuminate their corresponding range indicators, and must not be used.
-7. Press the Setup encoder again to save and return to Setup Mode.
-8. Press the yellow `SHIFT` button to exit. The K3 restarts.
-
-After setup, the K3 does not display a hardware-layer color; all LEDs being off is normal. After Live starts, loads `Xone_K3`, and receives one K3 control message, the script takes over the LEDs. Each press of `LAYER` advances the software layer, with **Layer 1 red → Layer 2 yellow → Layer 3 green → Layer 1 red**. `SHIFT` shows the current bank: **Bank 1 white → Bank 2 yellow → Bank 3 green**. Entering another main layer resets its bank to 1, so `SHIFT` returns to white.
-
-If `LAYER` must be pressed three times before Live reports one layer change, the hardware is still using State 2–5 instead of State 1.
-
-### 2. Install the Remote Script
-
-Create a `Remote Scripts` folder under the Ableton User Library and place the complete `Xone_K3` folder inside it:
+1. Import `Xone K3 Ableton.xml` into Xone Controller Editor, save it to User Map 2, 3 or 4 and activate that map. **Updating Python alone does not update hardware LED colors.**
+2. Set Latching Layers OFF in the hardware Power On Setup; this setting is not stored by the XML. Disconnect the K3, hold the bottom-right POWER ON SETUP encoder and reconnect it. Rotate to the second button in the top grid row (Latching Layers), press the encoder, then rotate until all option indicator LEDs are off: **State 1, OFF**. Press to save and press SHIFT to exit. States 2–5 are ON and must not be used.
+3. Keep LED mode Remote and close the Editor to release its MIDI ports.
+4. Install the entire `Xone_K3` folder, including `__init__.py`, `elements.py`, `midi.py` and `xonek3.py`, under your User Library's `Remote Scripts` folder:
 
 ```text
-macOS:
+macOS default:
 ~/Music/Ableton/User Library/Remote Scripts/Xone_K3
 
-Windows (default User Library location):
+Windows default:
 %USERPROFILE%\Documents\Ableton\User Library\Remote Scripts\Xone_K3
 ```
 
-If you moved the User Library, use the actual location shown in Live's settings.
+Use the actual User Library location shown in Live if customized. An existing installation inside Live's application resources must also be updated; avoid leaving different copies of the same surface installed.
 
-### 3. Configure Live
+5. Fully quit and reopen Live. In Settings/Preferences → Link, Tempo & MIDI, select `Xone_K3` as the Control Surface and `XONE:K3` for both Input and Output.
 
-1. Quit and relaunch Ableton Live completely.
-2. Open `Settings/Preferences → Link, Tempo & MIDI`.
-3. Select `Xone_K3` as the Control Surface.
-4. Select `XONE:K3` for both Input and Output.
+Before Live takes over, dark hardware LEDs are expected with Latching Layers OFF. Operate a control after connecting: the Session Ring appears once the script receives MIDI. If three LAYER presses produce only one software layer change, hardware Latching Layers are still enabled.
 
-The Session Ring remains hidden while the K3 is disconnected or before the script has received K3 MIDI. After reconnecting, move or press any control to restore the Ring.
+## Layers and indicators
 
-## How the four channel strips are chosen
+LAYER cycles software layers: **1 yellow → 2 green → 3 red**. Entering a layer resets its bank to 1.
 
-- Session View: the four tracks inside the Session Ring.
-- Arrangement View: the selected track is strip 1; the next three visible tracks are strips 2–4.
-- If a Return Track is selected in Arrangement: that Return is strip 1; the next three Returns are strips 2–4.
-- If the Master Track is selected in Arrangement: the four channel strips are unassigned; the top-right Master Volume encoder still works.
+In Session Layers 1/2 and Arrangement, SHIFT cycles Send/parameter banks, with white/yellow/red bank feedback. **In Session Layer 3, SHIFT instead toggles Arrangement Record: steady red while recording, dark otherwise.** Changes made with the mouse or other controllers are reflected too.
 
-Arrangement track navigation only visits real tracks and Returns, never Automation Lanes. Live's public API does not guarantee that the Arrangement viewport will scroll to the newly selected track.
+## Session View: track selection and clip controls
 
-## Controls shared by all layers
+Top encoder 2 selects visible normal tracks, then Returns, then Main; reverse rotation goes back. This applies to **all three Session layers**. It displays the Device Chain and focuses the track's selected device when available, without changing the Session Ring or fader assignments.
 
-### Four top encoders
+The four faders and clip columns continue to address the four normal tracks inside the Session Ring. Selecting Return/Main lets you control their devices but does not assign them to those faders. Clip pads launch individual slots, not entire scenes.
 
-| Left to right | Session View | Arrangement View |
-|---|---|---|
-| 1 | Tempo, 20–999 BPM | Tempo, 20–999 BPM |
-| 2 | Unassigned | Layer 1: horizontal zoom; Layers 2/3: internal Browser navigation |
-| 3 | Select through the current track's complete Device tree | Scroll the Arrangement viewport horizontally |
-| 4 | Master Volume | Master Volume |
+### Shared Session controls
 
-In Arrangement, encoder 3 calls Live's Arranger `scroll_view`. It moves the visible time range; it does not move the playhead or change `current_song_time`.
+| Control | Function |
+|---|---|
+| Top encoder 1 turn | Tempo, 20–999 BPM, 0.2 BPM per step |
+| Top encoder 2 turn | Select a track without moving the control window |
+| Top encoder 3 turn | Layers 1/2: select within the full device tree; Layer 3: top-level devices only |
+| Top encoder 4 turn | Main volume |
+| Four top encoder presses | Stop clips on the corresponding four controlled tracks |
+| Four faders | Volume of the four tracks in the Session Ring |
+| 4×4 pads | Launch slots across four tracks and four scenes |
 
-### Four top buttons
-
-| Left to right | Session View | Arrangement View |
-|---|---|---|
-| 1 | Stop the playing Clip on channel strip 1 | Previous Locator |
-| 2 | Stop the playing Clip on channel strip 2 | Layer 1: next Locator; Layers 2/3: open or load the current Browser item |
-| 3 | Stop the playing Clip on channel strip 3 | Set/Delete Locator |
-| 4 | Stop the playing Clip on channel strip 4 | Back to Arrangement |
-
-In Session, a top-button LED remains lit while its track is playing a Session Clip. In Arrangement, button 4 remains lit while Back to Arrangement is available; the other actions flash briefly.
-
-### Buttons below the three pot rows
-
-Their behavior is the same in every layer and both Live views:
-
-| Row | Action | Feedback |
-|---|---|---|
-| HI | Track Activator / Mute | Orange while the track is active; off while muted |
-| MID | Solo | Blue while soloed |
-| LOW | Arm | Red while an armable track is armed; off for tracks that cannot be armed |
-
-### Four faders
-
-They always control the Volume of the current four channel strips.
-
-## Layers and the 3×4 pots
-
-Press `LAYER` to cycle through Layers 1, 2, and 3. Entering a layer resets that layer to Bank 1.
+Clip feedback: empty dark; stopped clip yellow; playing green; recording or queued recording red. The Ring hides while disconnected or before incoming hardware MIDI is detected.
 
 ### Layer 1: Sends
 
-The three pot rows control three Sends across the current four channel strips:
+The three pot rows control three Sends for the four controlled tracks. SHIFT cycles Sends 1–3, 4–6 and 7–9. Unavailable sends remain unmapped.
 
-- Bank 1: Sends 1–3
-- Bank 2: Sends 4–6
-- Bank 3: Sends 7–9
+### Layer 2: Device Bank + Pan
 
-Press `SHIFT` to change banks. Pots beyond the available number of Returns are left unassigned.
+The first eight pots control one bank of the Appointed Device; the last four control panning for the four controlled tracks. SHIFT cycles up to three banks. Live's Push2 bank definitions take priority; unavailable definitions fall back to raw device parameter order.
 
-When a Return Track is selected in Arrangement, the four strips become the selected Return plus the next three Returns. Disabled Sends, including self-sends, are skipped and the next available Sends move forward to fill the bank.
+In Layers 1/2, button rows are Mute, Solo and Arm: active tracks yellow, Solo blue, Arm red. Bottom-left rotation selects a normal track and moves the track window; bottom-right rotation selects a scene and scrolls the four-row window when needed. Bottom-left press toggles Arrangement Record; bottom-right press re-enables automation.
 
-### Layer 2: Device banks + Pan
+## Session Layer 3: Performance for live shows
 
-- Upper eight pots: eight parameters from the appointed Device.
-- Bottom four pots: Pan for the current four channel strips.
-- `SHIFT`: cycle through as many as three Device banks.
+### Devices and parameters
 
-Parameter order comes from Live's built-in `Push2.custom_bank_definitions` whenever available. This reuses Push 2's named device banks instead of blindly taking the first eight raw parameters. Unsupported devices fall back to raw parameter order, eight parameters per bank. Turning a mapped pot shows the Layer, Bank, Device, parameter name, and value in Live's status bar.
-
-In Arrangement, Layer 2 uses a compact 4×4 Device list: every top-level Device is shown, along with racks nested inside racks. Ordinary Devices inside racks do not consume pads, making racks easier to reach.
-
-### Layer 3: Device banks + Pan
-
-The 3×4 pots are the same as Layer 2 and have an independent set of up to three Device banks. The difference is the Arrangement 4×4 Device list: Layer 3 exposes the complete Device tree, including ordinary Devices inside racks.
-
-Selecting a new appointed Device resets both Layer 2 and Layer 3 to their respective Bank 1.
-
-## Session View
-
-### 4×4 Clip pads
-
-Pads map left to right, then top to bottom, over four tracks × four Scenes. Press a pad to fire its Clip Slot.
-
-- Empty Slot: off
-- Clip present and stopped: yellow
-- Playing: green
-- Recording or queued to record: red
-
-### Two bottom encoders
-
-| Control | Action |
+| Control | Function |
 |---|---|
-| Turn left encoder | Select the previous/next visible track and make it the first Session Ring column |
-| Press left encoder | Toggle Arrangement Record; this also works while Session View is open |
-| Turn right encoder | Select the previous/next Scene; the Ring follows when required |
-| Press right encoder | Re-enable Automation when automation can be restored |
+| Top encoder 3 turn | Select top-level devices on the selected track; do not enter racks |
+| Middle and bottom button rows | Select one of eight displayed devices and focus it in Live; press the selected device again to toggle Device On/Bypass |
+| Twelve pots | Twelve parameter slots per page, following Push bank order |
+| Hold bottom-left encoder and turn | Change parameter pages; stop at the first/last page |
 
-The right encoder selects Scenes but does not launch a whole Scene. Individual Clips are launched with the 4×4 pads.
+The eight-device window stays fixed while selection remains inside it. Selecting device 9 shifts it forward by one; reverse navigation scrolls only when selection leaves the window. **Device-button presses never rearrange the window.** Changing tracks resets the device window and parameter page; changing devices resets the parameter page.
+
+Page 1 contains eight slots from Push bank 1 and four from bank 2. Page 2 continues with the remaining four from bank 2. Missing slots stay empty rather than compressing the order. If banking is unavailable, raw parameters are used after skipping Device On. Parameter takeover remains enabled across device/page changes. Actual Macro order depends on Push definitions; it is not guaranteed to match every device's visual knob order.
+
+### Mixing and recording
+
+| Control | Function |
+|---|---|
+| Top button row beneath the pots | Mute the four controlled tracks |
+| Bottom-left turn | Move the track window one track per step; clips, mutes and faders move together; selected track stays unchanged |
+| Bottom-right turn | Move the scene window one scene per step without changing scene selection |
+| Bottom encoder presses alone | No action; holding the left encoder while turning changes parameter pages |
+| SHIFT | Toggle Arrangement Record; steady red while recording, dark otherwise |
+| LAYER | Continue cycling layers |
+
+### Eight device-button LEDs
+
+Devices and racks share the same rules:
+
+| State | Color |
+|---|---|
+| Empty / unselected and bypassed | Dark |
+| Unselected and enabled | Blue |
+| Selected and enabled | Yellow |
+| Selected and bypassed | Red |
+
+LEDs show the current selection and enabled state. If the colors do not match, check that the supplied XML is loaded on the hardware.
 
 ## Arrangement View
 
-### 4×4 Device pads
+Switch Live to Arrangement View to use the following controls.
 
-Pads select Devices left to right, then top to bottom:
-
-- Layers 1 and 3: top-level Devices from left to right; a rack itself comes first, followed recursively by its Chains in order; up to 16 entries.
-- Layer 2: top-level Devices plus nested racks at any depth; ordinary Devices inside racks are hidden.
-
-Press an unselected Device to select and focus it. Press the already selected Device again to toggle its first parameter, normally Device On/Bypass.
-
-LED rules:
-
-- Empty position: off
-- Unselected ordinary Device: green, regardless of On/Bypass state
-- Unselected rack: off, serving as a visual group separator
-- Selected and enabled: yellow
-- Selected and bypassed: red
-
-When a Device is selected from the K3, the script opens Device Chain view, selects its containing Chain, expands the target path, hides the Chain List, and attempts to show the Device fully near the left edge. Among ordinary Devices, the target is unfolded and other ordinary Devices are folded; racks are excluded from that folding rule. Live still controls the final viewport position in complex or deeply nested racks.
-
-Selecting a Device with the mouse updates the K3 pad LEDs and Layer 2/3 parameter banks. Mouse selection does not make the script rewrite the fold state of other Devices.
-
-### Two bottom encoders
-
-| Control | Action |
+| Control | Function |
 |---|---|
-| Turn left encoder | Vertical Arrangement zoom |
-| Press left encoder | Toggle Arrangement Record |
-| Turn right encoder | Select real Tracks and Return Tracks, skipping Automation Lanes |
-| Press right encoder | Re-enable Automation when automation can be restored |
+| Top encoder 1 turn / press | Tempo / previous locator |
+| Top encoder 2 turn / press, Layer 1 | Horizontal zoom / next locator |
+| Top encoder 2 turn / press, Layers 2/3 | Browser navigation / enter folder or load item |
+| Top encoder 3 turn / press | Horizontal view scrolling / set or delete locator |
+| Top encoder 4 turn / press | Main volume / Back to Arrangement |
+| Bottom-left turn / press | Vertical zoom / Arrangement Record |
+| Bottom-right turn / press | Select normal and Return tracks / re-enable automation |
 
-## Internal Browser
+The mixer window begins at the selected track, or selected Return when applicable. Selecting Main leaves the four-track controls unmapped. Button rows are Mute/Solo/Arm. Layer 1 pots control Sends; Layer 2/3 pots control eight device parameters and four pans. SHIFT cycles banks.
 
-Browser control is active only in **Arrangement View, Layers 2 and 3**:
+The 4×4 pads select devices; pressing the selected device toggles it. Layer 2 lists top-level devices and nested racks; Layers 1/3 list the full device tree. Arrangement pad colors: unselected ordinary devices green regardless of enabled state; unselected racks dark; selected enabled yellow; selected bypassed red.
 
-- Turn top encoder 2 to move within the current level.
-- Turn left past the first child to return to the parent level.
-- Press top button 2 to enter an item with children or ask Live to load a loadable item at its current Browser insertion target, normally the selected track.
-- A loadable selection is previewed after a short delay. Moving again, loading, leaving a Browser-enabled layer, or disconnecting stops the previous preview.
+Browser navigation operates only in Arrangement Layers 2/3: turn top encoder 2 to navigate, turn backward past the first child to return to the parent, and press to enter or load. Previewable items play after a short delay; moving, loading or leaving stops the previous preview. The path appears in Live's status bar; the on-screen Browser selection is not synchronized.
 
-On first use, the root begins with Live's color-label items, followed by Sounds, Drums, Instruments, Audio Effects, MIDI Effects, Max for Live, Plug-ins, Clips, and Samples. The current path appears in Live's status bar. BrowserItem is the single source of truth: the script deliberately does not open Live's on-screen Browser or try to synchronize its visible highlight.
+## Limits and troubleshooting
 
-## Layer and Shift LEDs
+- Device focusing, folding and approximate positioning depend on Live's public API and rack layout. Left alignment and automatic scrolling to a selected track are not guaranteed.
+- Arrangement horizontal scrolling changes the visible region, not the playback position.
+- Fully restart Live after replacing Python files. Write XML separately to the hardware and close the Editor.
+- Wrong colors: check the current XML, Latching Layers OFF, LED Remote, and Live's MIDI Output.
 
-| LED | Colors |
-|---|---|
-| LAYER | Layer 1 red, Layer 2 yellow, Layer 3 green |
-| SHIFT | Bank 1 white, Bank 2 yellow, Bank 3 green |
-
-`LAYER` is Note 12 in the XML; `SHIFT` is Note 15. Latching Layers must be off so the script can use the three feedback-note sets for stable color control.
-
-## Known limitations
-
-- Live's public Remote Script API has no complete command for “select a real track and guarantee that Arrangement scrolls it into view.” Track selection is correct, but the viewport may not follow.
-- The API does not expose Arrangement's Zoom Hot Spot or precise visible time range. The script uses Live's horizontal scroll and zoom calls but cannot guarantee that the playhead remains on screen.
-- Device left positioning is an approximation based on Device Chain selection and scrolling. Live decides the final position in complex racks.
-- The internal Browser intentionally does not display or control Live's on-screen Browser. Use the status-bar path and the audible preview as feedback.
-
-## Troubleshooting
-
-- **Live does not react:** load the `Xone K3 Ableton` User Map, set Latching Layers to OFF, quit the Editor, and select `XONE:K3` for both Control Surface Input and Output.
-- **Xone_K3 is missing from the Control Surface list:** verify `Remote Scripts/Xone_K3/__init__.py`, then relaunch Live completely.
-- **Controls work but LEDs do not:** set Live's MIDI Output to `XONE:K3` and keep the XML LEDs in Remote mode.
-- **The Session Ring is missing:** move or press any K3 control so the script can confirm the hardware connection. If necessary, reconnect the K3 and check its MIDI port.
-- **Control numbers suddenly look wrong:** reconnect the K3, reload the correct User Map, and do not leave Xone Controller Editor open.
-- **A script update appears to do nothing:** quit Live completely before replacing the `Xone_K3` folder, then relaunch it. Do not rely on hot reload for Remote Script changes.
-
-## Getting updates
-
-Download the latest code from the repository's `main` branch or use GitHub's **Code → Download ZIP**. Tagged Releases may lag behind `main`; use `main` when you need the current script.
+Download the current version from `main`. Tagged releases may be older than `main`.

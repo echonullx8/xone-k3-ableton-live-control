@@ -40,6 +40,9 @@ class XoneK3(ControlSurface):
     _SHIFT_NOTES = (L1_SHFT, L2_SHFT, L3_SHFT)
 
     def __init__(self, c_instance=None):
+        self._performance_parameter_page = 0
+        self._performance_page_shift = False
+        self._performance_device_offset = 0
         self._active_layer = 0
         self._layer_banks = [0, 0, 0]
         self._session_track_offset = 0
@@ -90,6 +93,7 @@ class XoneK3(ControlSurface):
         self.song.view.add_selected_track_listener(self._on_selected_track_changed)
         self.song.add_visible_tracks_listener(self._on_visible_tracks_changed)
         self.song.add_is_playing_listener(self._on_transport_state_changed)
+        self.song.add_record_mode_listener(self._on_transport_state_changed)
         if hasattr(self.song, 'add_appointed_device_listener'):
             self.song.add_appointed_device_listener(self._on_appointed_device_changed)
         self._update_selected_device_listener()
@@ -148,6 +152,12 @@ class XoneK3(ControlSurface):
 
     def _on_top_encoder(self, index, value):
         delta = self._relative_delta(value)
+        if index == 1 and not self._is_arranger():
+            self._select_session_track(delta, move_ring=False)
+            return
+        if index == 2 and self._is_performance():
+            self._select_performance_device(delta)
+            return
         if index == 1 and self._browser_navigation_active():
             self._navigate_browser(delta)
             return
@@ -209,6 +219,11 @@ class XoneK3(ControlSurface):
         self.schedule_message(1, lambda: self._refresh_mixer_leds(force=True))
 
     def _on_solo(self, index, value):
+        if self._is_performance():
+            if value:
+                self._activate_performance_device(index)
+            self._refresh_mixer_leds(force=True)
+            return
         if value:
             track = self._track_at(index)
             if track:
@@ -216,6 +231,11 @@ class XoneK3(ControlSurface):
         self.schedule_message(1, lambda: self._refresh_mixer_leds(force=True))
 
     def _on_arm(self, index, value):
+        if self._is_performance():
+            if value:
+                self._activate_performance_device(index + 4)
+            self._refresh_mixer_leds(force=True)
+            return
         if value:
             track = self._track_at(index)
             if track and track.can_be_armed:
@@ -260,7 +280,20 @@ class XoneK3(ControlSurface):
         if not delta:
             return
 
-        if self._is_arranger():
+        if self._is_performance():
+            if index == 0 and self._performance_page_shift:
+                self._performance_parameter_page = max(0, min(self._performance_parameter_page_count() - 1, self._performance_parameter_page + delta))
+                self._bind_pots()
+                self.show_message('K3 Performance · Parameter page {}'.format(self._performance_parameter_page + 1))
+                return
+            if index == 0:
+                self._session_track_offset = max(0, min(max(0, len(self.song.visible_tracks) - 1), self._session_track_offset + delta))
+            else:
+                self._session_scene_offset = max(0, min(max(0, len(self.song.scenes) - 1), self._session_scene_offset + delta))
+            self._apply_session_ring_offsets()
+            self._bind_all_parameters()
+            self._refresh_leds()
+        elif self._is_arranger():
             if index == 0:
                 self._zoom_arranger_vertical(delta)
             else:
@@ -272,6 +305,10 @@ class XoneK3(ControlSurface):
                 self._select_relative_scene(delta)
 
     def _on_bottom_button(self, index, value):
+        if index == 0:
+            self._performance_page_shift = bool(value) and self._is_performance()
+        if self._is_performance():
+            return
         if not value:
             return
         if index == 0:
@@ -281,9 +318,13 @@ class XoneK3(ControlSurface):
 
     def _on_shift(self, value):
         if not value:
-            self.schedule_message(1, lambda: self._refresh_shift_led(force=True))
+            self._refresh_shift_led(force=True)
             return
 
+        if self._is_performance():
+            self.song.record_mode = not self.song.record_mode
+            self._refresh_shift_led(force=True)
+            return
         if self._active_layer == 0:
             self._layer_banks[0] = (self._layer_banks[0] + 1) % 3
             self._bind_pots()
@@ -302,6 +343,7 @@ class XoneK3(ControlSurface):
 
     def _on_layer(self, value):
         if value:
+            self._performance_page_shift = False
             self._active_layer = (self._active_layer + 1) % 3
             if not self._browser_navigation_active():
                 self._stop_browser_preview()
@@ -348,6 +390,8 @@ class XoneK3(ControlSurface):
                 self._bind_return_sends(pots)
             else:
                 self._bind_track_sends(pots)
+        elif self._is_performance():
+            self._bind_performance_parameters(pots)
         else:
             self._bind_device_and_balance(pots)
 
@@ -370,6 +414,82 @@ class XoneK3(ControlSurface):
                             ),
                             parameter,
                         )
+
+    def _is_performance(self):
+        return self._active_layer == 2 and not self._is_arranger()
+
+    def _performance_devices(self):
+        return list(self.song.view.selected_track.devices)
+
+    def _select_performance_device(self, delta):
+        devices = self._performance_devices()
+        if not devices or not delta:
+            return
+        selected = self.song.appointed_device
+        index = devices.index(selected) if selected in devices else 0
+        index = max(0, min(len(devices) - 1, index + delta))
+        offset = min(self._performance_device_offset, max(0, len(devices) - 8))
+        if index < offset:
+            offset = index
+        elif index >= offset + 8:
+            offset = index - 7
+        self._performance_device_offset = offset
+        self._focus_device(devices[index])
+        self._bind_pots()
+        self._refresh_mixer_leds(force=True)
+
+    def _activate_performance_device(self, index):
+        devices = self._performance_devices()
+        index += self._performance_device_offset
+        if index >= len(devices):
+            return
+        device = devices[index]
+        if device == self.song.appointed_device:
+            self._toggle_device(device)
+        self._focus_device(device)
+        self._bind_pots()
+
+    def _performance_parameter_page_count(self):
+        device = self.song.appointed_device
+        if device is None:
+            return 1
+        bank = None
+        try:
+            bank = create_parameter_bank(device, self._push_banking_info)
+            return max(1, (bank.bank_count * 8 + 11) // 12)
+        except (AttributeError, IndexError, RuntimeError, TypeError):
+            return max(1, (len(device.parameters) - 1 + 11) // 12)
+        finally:
+            if bank is not None:
+                bank.disconnect()
+
+    def _bind_performance_parameters(self, pots):
+        device = self.song.appointed_device
+        if device is None:
+            return
+        bank = None
+        infos = []
+        try:
+            bank = create_parameter_bank(device, self._push_banking_info)
+            infos = []
+            for bank_index in range(bank.bank_count):
+                count = 8
+                slots = []
+                if bank_index < bank.bank_count:
+                    bank.index = bank_index
+                    slots = list(bank.parameters)[:count]
+                infos.extend(slots + [None] * (count - len(slots)))
+        except (AttributeError, IndexError, RuntimeError, TypeError):
+            infos = list(device.parameters)[1:]
+        finally:
+            if bank is not None:
+                bank.disconnect()
+        start = self._performance_parameter_page * 12
+        for index, slot in enumerate(infos[start:start + 12]):
+            parameter = slot[0] if isinstance(slot, tuple) and slot else slot
+            if parameter is not None and self._is_mappable_parameter(parameter):
+                pots[index].connect_to(parameter)
+                self._bound_pot_infos[index] = ('K3 Performance · {} · {}'.format(device.name, parameter.name), parameter)
 
     def _bind_device_and_balance(self, pots):
         device = self.song.appointed_device
@@ -571,6 +691,8 @@ class XoneK3(ControlSurface):
         self.schedule_message(1, self._refresh_bindings_and_leds)
 
     def _on_selected_track_changed(self):
+        self._performance_parameter_page = 0
+        self._performance_device_offset = 0
         self._update_selected_device_listener()
         self.schedule_message(1, self._refresh_bindings_and_leds)
 
@@ -587,6 +709,7 @@ class XoneK3(ControlSurface):
             pass
 
     def _on_appointed_device_changed(self):
+        self._performance_parameter_page = 0
         if self._positioning_device:
             return
         self._layer_banks[1] = 0
@@ -597,6 +720,7 @@ class XoneK3(ControlSurface):
         ):
             self._push_parameter_bank.index = 0
         self._bind_pots()
+        self._refresh_mixer_leds(force=True)
         self.schedule_message(1, lambda: self._refresh_pad_leds(force=True))
 
     def _update_selected_device_listener(self):
@@ -659,14 +783,18 @@ class XoneK3(ControlSurface):
 
     def _on_transport_state_changed(self):
         try:
+            self._refresh_shift_led(force=True)
             self._refresh_top_leds(force=True)
             if not self._is_arranger():
                 self._refresh_pad_leds(force=True)
         except (RuntimeError, TypeError):
             pass
 
-    def _select_session_track(self, delta):
+    def _select_session_track(self, delta, move_ring=True):
         tracks = list(self.song.visible_tracks)
+        if not move_ring:
+            tracks.extend(track for track in self.song.return_tracks if track not in tracks)
+            tracks.append(self.song.master_track)
         if not tracks:
             return
         selected = self.song.view.selected_track
@@ -677,8 +805,14 @@ class XoneK3(ControlSurface):
         )
         new_index = max(0, min(len(tracks) - 1, old_index + delta))
         self.song.view.selected_track = tracks[new_index]
-        self._session_track_offset = new_index
-        self._apply_session_ring_offsets()
+        if move_ring:
+            self._session_track_offset = new_index
+            self._apply_session_ring_offsets()
+        else:
+            self.application.view.show_view('Detail/DeviceChain')
+            device = tracks[new_index].view.selected_device
+            if device is not None:
+                self._focus_device(device)
         self._bind_all_parameters()
         self._refresh_leds()
 
@@ -1337,20 +1471,38 @@ class XoneK3(ControlSurface):
             pass
 
     def _refresh_layer_led(self, force=False):
-        self._set_multicolor_led(self._LAYER_NOTES, self._active_layer, True, force=force)
+        self._set_multicolor_led(self._LAYER_NOTES, (1, 2, 0)[self._active_layer], True, force=force)
 
     def _refresh_shift_led(self, force=False):
+        if self._is_performance():
+            self._set_multicolor_led(self._SHIFT_NOTES, 2, bool(self.song.record_mode), force=force)
+            return
         bank_index = self._layer_banks[self._active_layer]
         self._set_multicolor_led(self._SHIFT_NOTES, bank_index, True, force=force)
 
     def _refresh_mixer_leds(self, force=False):
+        if self._is_performance():
+            devices = self._performance_devices()
+            selected = self.song.appointed_device
+            notes = self._SOLO_NOTES + self._ARM_NOTES
+            for index, note in enumerate(notes):
+                position = self._performance_device_offset + index
+                device = devices[position] if position < len(devices) else None
+                color = 1 if device is not None and device == selected and self._device_is_enabled(device) else 2 if device is not None and device == selected else 0
+                is_on = device is not None and (device == selected or self._device_is_enabled(device))
+                self._set_multicolor_led(self._feedback_notes(note), color, is_on, force=force)
+            for index, note in enumerate(self._MUTE_NOTES):
+                track = self._track_at(index)
+                self._set_single_color_led(note, bool(track and not track.mute), force=force)
+            return
         tracks = self._controlled_tracks()
         for index in range(4):
             track = tracks[index] if index < len(tracks) else None
             self._set_single_color_led(self._MUTE_NOTES[index], bool(track and not track.mute), force=force)
-            self._set_single_color_led(self._SOLO_NOTES[index], bool(track and track.solo), force=force)
-            self._set_single_color_led(
-                self._ARM_NOTES[index],
+            self._set_multicolor_led(self._feedback_notes(self._SOLO_NOTES[index]), 0, bool(track and track.solo), force=force)
+            self._set_multicolor_led(
+                self._feedback_notes(self._ARM_NOTES[index]),
+                2,
                 bool(track and track.can_be_armed and track.arm),
                 force=force,
             )
@@ -1476,7 +1628,7 @@ class XoneK3(ControlSurface):
 
     def _send_note(self, note, value):
         if self._hardware_connected:
-            self._send_midi((0x90 | CHANNEL, note, value))
+            self._send_midi((0x90 | CHANNEL, note, value), optimized=False)
 
     @staticmethod
     def _feedback_notes(layer_one_note):
@@ -1538,6 +1690,8 @@ class XoneK3(ControlSurface):
         return value if value < 64 else value - 128
 
     def disconnect(self):
+        if self.song.record_mode_has_listener(self._on_transport_state_changed):
+            self.song.remove_record_mode_listener(self._on_transport_state_changed)
         self._stop_browser_preview()
         self._disconnected = True
         self._disconnect_push_parameter_bank()

@@ -864,7 +864,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>8</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>9</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -874,7 +874,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>9</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>9</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -884,7 +884,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>10</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>9</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -894,7 +894,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>11</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>9</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1929,7 +1929,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>4</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1939,7 +1939,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>5</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1949,7 +1949,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>6</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1959,7 +1959,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>7</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1969,7 +1969,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>8</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1979,7 +1979,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>9</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1989,7 +1989,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>10</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -1999,7 +1999,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>11</LEDIndex>
-                <LEDColor>1</LEDColor>
+                <LEDColor>2</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -3034,7 +3034,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>4</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>1</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -3044,7 +3044,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>5</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>1</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -3054,7 +3054,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>6</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>1</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -3064,7 +3064,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>7</LEDIndex>
-                <LEDColor>9</LEDColor>
+                <LEDColor>1</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
@@ -3284,7 +3284,7 @@
                     <MIDINumber>0</MIDINumber>
                 </Control>
                 <LEDIndex>29</LEDIndex>
-                <LEDColor>5</LEDColor>
+                <LEDColor>1</LEDColor>
                 <LEDMode>0</LEDMode>
             </LED>
             <LED>
